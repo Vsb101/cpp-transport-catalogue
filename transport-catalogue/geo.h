@@ -2,6 +2,8 @@
 
 #include <cmath>
 
+namespace geo {
+
 struct Coordinates {
     double lat;
     double lng;
@@ -13,7 +15,7 @@ struct Coordinates {
     }
 };
 
-inline double ComputeDistance(Coordinates from, Coordinates to) {
+inline double ComputeDistance(const Coordinates& from, const Coordinates& to) {
     using namespace std;
     if (from == to) {
         return 0;
@@ -23,3 +25,5 @@ inline double ComputeDistance(Coordinates from, Coordinates to) {
                 + cos(from.lat * dr) * cos(to.lat * dr) * cos(abs(from.lng - to.lng) * dr))
         * 6371000;
 }
+
+} // namespace geo

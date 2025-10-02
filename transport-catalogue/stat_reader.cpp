@@ -1,1 +1,63 @@
-// место для вашего кода
+#include <iostream>
+#include <string>
+#include <unordered_set>
+
+#include "stat_reader.h"
+
+using namespace std::string_literals;
+
+template <typename T>
+std::ostream& operator<<(std::ostream& os, const std::vector<T>& vec) {
+    bool first_element = true;
+    for (const auto& item : vec) {
+        if (!first_element) {
+            os << " ";
+        }
+        os << item;
+        first_element = false;
+    }
+    return os;
+}
+
+void PrintBus (const transport::TransportCatalogue& tansport_catalogue,
+               std::string_view request,
+               std::ostream& output,
+               std::string_view command) {
+    const auto* bus = tansport_catalogue.FindBus(command);
+    if (bus == nullptr) {
+        output << request << ": not found"s << std::endl;
+        return;
+    }
+    const transport::BusInfo route = tansport_catalogue.GetBusInfo(command);
+    output << request << ": "s << route.stops_on_route << " stops on route, "s;
+    output << route.unique_stops << " unique stops, "s << route.route_length << " route length"s << std::endl;
+}
+
+void PrintStop (const transport::TransportCatalogue& tansport_catalogue,
+               std::string_view request,
+               std::ostream& output,
+               std::string_view command) { 
+    const auto stop = tansport_catalogue.FindStop(command);
+    if (stop == nullptr) {
+        output << request << ": not found\n"s;
+        return;
+    }
+    const std::vector<std::string_view> buses = tansport_catalogue.GetBusesForStop(command);
+    if (buses.empty()) {
+        output << request << ": no buses\n"s;
+        return;
+    }
+    output << request << ": buses " << buses << "\n";
+}
+
+void ParseAndPrintStat(const transport::TransportCatalogue& tansport_catalogue, std::string_view request,
+                       std::ostream& output) {
+    if (request.starts_with ("Bus ")) {
+        std::string_view cmd = request.substr(4);
+        PrintBus(tansport_catalogue, request, output, cmd);
+    }
+    if (request.starts_with("Stop ")) {
+        std::string_view cmd = request.substr(5);
+        PrintStop(tansport_catalogue, request, output, cmd);
+    }
+}
