@@ -4,15 +4,17 @@
 
 #include "stat_reader.h"
 
+namespace stat_reader {
+
+namespace detail {
+    
 using namespace std::string_literals;
 
 template <typename T>
 std::ostream& operator<<(std::ostream& os, const std::vector<T>& vec) {
     bool first_element = true;
     for (const auto& item : vec) {
-        if (!first_element) {
-            os << " ";
-        }
+        if (!first_element) { os << " "; }
         os << item;
         first_element = false;
     }
@@ -34,9 +36,9 @@ void PrintBus (const transport::TransportCatalogue& tansport_catalogue,
 }
 
 void PrintStop (const transport::TransportCatalogue& tansport_catalogue,
-               std::string_view request,
-               std::ostream& output,
-               std::string_view command) { 
+                std::string_view request,
+                std::ostream& output,
+                std::string_view command) { 
     const auto stop = tansport_catalogue.FindStop(command);
     if (stop == nullptr) {
         output << request << ": not found\n"s;
@@ -61,3 +63,19 @@ void ParseAndPrintStat(const transport::TransportCatalogue& tansport_catalogue, 
         PrintStop(tansport_catalogue, request, output, cmd);
     }
 }
+
+} // namespace detail
+
+void HandleStatRequests(const transport::TransportCatalogue& transport_catalogue, 
+                        std::istream& input, 
+                        std::ostream& output) {
+    int stat_request_count;
+    input >> stat_request_count >> std::ws;
+    for (int i = 0; i < stat_request_count; ++i) {
+        std::string line;
+        getline(input, line);
+        detail::ParseAndPrintStat(transport_catalogue, line, output);
+    }
+}
+
+} // namespace stat_reader

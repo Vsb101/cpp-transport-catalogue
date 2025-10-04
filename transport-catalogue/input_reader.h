@@ -1,5 +1,6 @@
 #pragma once
 #include <string>
+#include <iostream>
 #include <string_view>
 #include <vector>
 
@@ -25,18 +26,20 @@ struct CommandDescription {
 
 class InputReader {
 public:
-    /**
-     * Парсит строку в структуру CommandDescription и сохраняет результат в commands_
-     */
-    void ParseLine(std::string_view line);
+    InputReader(transport::TransportCatalogue& catalog) : catalogue_(catalog) {};
 
-    /**
-     * Наполняет данными транспортный справочник, используя команды из commands_
-     */
-    void ApplyCommands(transport::TransportCatalogue& catalogue) const;
+    // Наполняет данными транспортный справочник, используя команды из commands_
+    void ApplyCommands(transport::TransportCatalogue& catalogue);
+
+    // Для чтения базовых запросов и их обработки
+    void HandleBaseRequests(std::istream& input_stream);
 
 private:
+    //Парсит строку в структуру CommandDescription и сохраняет результат в commands_
+    void ParseLine(std::string_view line);
+
     std::vector<CommandDescription> commands_;
+    transport::TransportCatalogue& catalogue_;
 };
 
 } //namespace input

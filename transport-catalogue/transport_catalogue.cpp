@@ -10,43 +10,53 @@ using std::move;
 using std::vector;
 
 void TransportCatalogue::AddStop(const string& stop_name, geo::Coordinates coordinates) {
-    stops_.push_back({move(stop_name), move(coordinates)});
+    stops_.push_back({stop_name, coordinates});
     stopname_to_stop_[stops_.back().name] = &stops_.back();
 }
 
-void TransportCatalogue::AddBus(const string& bus_name, vector<string_view> stops) {
+void TransportCatalogue::AddBus(const string& bus_name, const vector<string_view> stops) {
+    // Конвертируем остановки в string_view
     std::vector<string_view> stops_to_string;
-    for (const string_view stop : stops) {
-        stops_to_string.push_back(stopname_to_stop_.at(stop)->name);
+    for (const auto& stop : stops) {
+        auto it = stopname_to_stop_.find(stop);
+        if (it != stopname_to_stop_.end()) {
+            stops_to_string.push_back(it->second->name);
+        }
     }
-    buses_.push_back({move(bus_name), move(stops_to_string)});
+
+    // Проверяем, существует ли автобус с таким именем
+    if (busname_to_bus_.find(bus_name) != busname_to_bus_.end()) {
+        return;
+    }
+
+    // Добавляем автобус в список
+    buses_.push_back({bus_name, std::move(stops_to_string)});
     busname_to_bus_[buses_.back().name] = &buses_.back();
+
+    // Обновляем индекс: добавляем автобус к каждой остановке его маршрута
+    for (const auto& stop : stops) {
+        stop_to_buses_[stop].insert(std::string_view(bus_name));
+    }
 }
 
-const Stop* TransportCatalogue::FindStop(const std::string_view& name) const {
+const Stop* TransportCatalogue::FindStop(const std::string_view name) const {
     auto it = stopname_to_stop_.find(name);
     return (it != stopname_to_stop_.end()) ? it->second : nullptr;
 }
 
-const Bus* TransportCatalogue::FindBus(const std::string_view& name) const {
+const Bus* TransportCatalogue::FindBus(const std::string_view name) const {
     auto it = busname_to_bus_.find(name);
     return (it != busname_to_bus_.end()) ? it->second : nullptr;
 }
 
-const vector<std::string_view> TransportCatalogue::GetBusesForStop (std::string_view stop_name) const {
-    const Stop* stop  = FindStop(stop_name);
-    if (!stop) {
+
+const vector<std::string_view> TransportCatalogue::GetBusesForStop(std::string_view stop_name) const {
+    auto it = stop_to_buses_.find(stop_name);
+    if (it == stop_to_buses_.end()) {
         return {};
     }
-    std::vector<std::string_view> result;
-    for (const auto& bus : buses_) {
-        for (const auto& bus_stop : bus.stops) {
-            if (bus_stop == stop->name) {
-                result.push_back(bus.name);
-                break;
-            }
-        }
-    }
+
+    std::vector<std::string_view> result(it->second.begin(), it->second.end());
     std::sort(result.begin(), result.end());
     return result;
 }
@@ -84,7 +94,6 @@ const BusInfo TransportCatalogue::GetBusInfo(const std::string_view bus_name) co
         }
         result.route_length = total_distance;
     }
-
     return result;
 }
 

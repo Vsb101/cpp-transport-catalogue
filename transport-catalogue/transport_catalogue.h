@@ -34,8 +34,8 @@ public:
     void AddStop(const std::string& name, geo::Coordinates coordinates);
     void AddBus(const std::string& name, std::vector<std::string_view> stops);
     
-    const Stop* FindStop(const std::string_view& stop_name) const;
-    const Bus*  FindBus(const std::string_view& bus_name) const;
+    const Stop* FindStop(const std::string_view stop_name) const;
+    const Bus*  FindBus(const std::string_view bus_name) const;
     
     // Возвращает список автобусов, проходящих через указанную остановку.
     const BusList GetBusesForStop(std::string_view stop_name) const;
@@ -54,10 +54,18 @@ private:
         }
     };
 
+    struct StringViewHasher {
+        size_t operator()(const std::string_view& s) const {
+            return std::hash<std::string_view>{}(s);
+        }
+    };
+
+
     std::deque<Stop> stops_;
     std::deque<Bus> buses_;
     std::unordered_map<std::string_view, const Stop*> stopname_to_stop_;
     std::unordered_map<std::string_view, const Bus*> busname_to_bus_;
+    std::unordered_map<std::string_view, std::unordered_set<std::string_view>, StringViewHasher> stop_to_buses_;
     std::unordered_map<std::pair<const Stop*, const Stop*>, double, StopsHasher> stops_length_;  
 };
 
