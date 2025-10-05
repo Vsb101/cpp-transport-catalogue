@@ -21,30 +21,30 @@ std::ostream& operator<<(std::ostream& os, const std::vector<T>& vec) {
     return os;
 }
 
-void PrintBus (const transport::TransportCatalogue& tansport_catalogue,
+void PrintBus (const transport::TransportCatalogue& transport_catalogue,
                std::string_view request,
                std::ostream& output,
                std::string_view command) {
-    const auto* bus = tansport_catalogue.FindBus(command);
+    const auto* bus = transport_catalogue.FindBus(command);
     if (bus == nullptr) {
         output << request << ": not found"s << std::endl;
         return;
     }
-    const transport::BusInfo route = tansport_catalogue.GetBusInfo(command);
+    const transport::BusInfo route = transport_catalogue.GetBusInfo(command);
     output << request << ": "s << route.stops_on_route << " stops on route, "s;
     output << route.unique_stops << " unique stops, "s << route.route_length << " route length"s << std::endl;
 }
 
-void PrintStop (const transport::TransportCatalogue& tansport_catalogue,
+void PrintStop (const transport::TransportCatalogue& transport_catalogue,
                 std::string_view request,
                 std::ostream& output,
                 std::string_view command) { 
-    const auto stop = tansport_catalogue.FindStop(command);
+    const auto stop = transport_catalogue.FindStop(command);
     if (stop == nullptr) {
         output << request << ": not found\n"s;
         return;
     }
-    const std::vector<std::string_view> buses = tansport_catalogue.GetBusesForStop(command);
+    const std::vector<std::string_view> buses = transport_catalogue.GetBusesForStop(command);
     if (buses.empty()) {
         output << request << ": no buses\n"s;
         return;
@@ -52,15 +52,16 @@ void PrintStop (const transport::TransportCatalogue& tansport_catalogue,
     output << request << ": buses " << buses << "\n";
 }
 
-void ParseAndPrintStat(const transport::TransportCatalogue& tansport_catalogue, std::string_view request,
+void ParseAndPrintStat(const transport::TransportCatalogue& transport_catalogue,
+                       std::string_view request,
                        std::ostream& output) {
     if (request.starts_with ("Bus ")) {
         std::string_view cmd = request.substr(4);
-        PrintBus(tansport_catalogue, request, output, cmd);
+        PrintBus(transport_catalogue, request, output, cmd);
     }
     if (request.starts_with("Stop ")) {
         std::string_view cmd = request.substr(5);
-        PrintStop(tansport_catalogue, request, output, cmd);
+        PrintStop(transport_catalogue, request, output, cmd);
     }
 }
 

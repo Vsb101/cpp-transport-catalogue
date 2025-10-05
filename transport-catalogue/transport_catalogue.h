@@ -4,7 +4,7 @@
 #include <vector>
 #include <deque>
 #include <unordered_map>
-#include <unordered_set>
+#include <set>
 #include <string>
 
 #include "geo.h"
@@ -65,7 +65,7 @@ private:
     std::deque<Bus> buses_;
     std::unordered_map<std::string_view, const Stop*> stopname_to_stop_;
     std::unordered_map<std::string_view, const Bus*> busname_to_bus_;
-    std::unordered_map<std::string_view, std::unordered_set<std::string_view>, StringViewHasher> stop_to_buses_;
+    std::unordered_map<std::string_view, std::set<std::string_view>, StringViewHasher> stop_to_buses_;
     std::unordered_map<std::pair<const Stop*, const Stop*>, double, StopsHasher> stops_length_;  
 };
 

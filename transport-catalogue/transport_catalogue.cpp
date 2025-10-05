@@ -1,4 +1,5 @@
 #include <algorithm>
+#include <unordered_set>
 
 #include "transport_catalogue.h"
 
@@ -56,9 +57,7 @@ const vector<std::string_view> TransportCatalogue::GetBusesForStop(std::string_v
         return {};
     }
 
-    std::vector<std::string_view> result(it->second.begin(), it->second.end());
-    std::sort(result.begin(), result.end());
-    return result;
+    return {it->second.begin(), it->second.end()};
 }
 
 const BusInfo TransportCatalogue::GetBusInfo(const std::string_view bus_name) const {

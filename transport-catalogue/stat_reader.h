@@ -9,7 +9,8 @@ namespace stat_reader {
 
 namespace detail {
 
-void ParseAndPrintStat(const transport::TransportCatalogue& tansport_catalogue, std::string_view request,
+void ParseAndPrintStat(const transport::TransportCatalogue& tansport_catalogue,
+     std::string_view request,
                        std::ostream& output);
 
 } // namespace detail
