@@ -1,13 +1,13 @@
-#include "input_reader.h"
-
 #include <algorithm>
 #include <cassert>
 #include <iterator>
+#include <charconv>
+
+#include "input_reader.h"
 
 namespace input {
 
 namespace detail {
-
 
 //Парсит строку вида "10.123,  -30.1837" и возвращает пару координат (широта, долгота)
 geo::Coordinates ParseCoordinates(std::string_view str) {
@@ -94,6 +94,32 @@ CommandDescription ParseCommandDescription(std::string_view line) {
             std::string(line.substr(colon_pos + 1))};
 }
 
+std::unordered_map<std::string_view, int> ParseDistance(std::string_view line) {
+    std::unordered_map<std::string_view, int> length_to_stops{};
+    auto comma1 = line.find(',');
+    auto comma2 = line.find(',', comma1 + 1);
+    if (comma2 == line.npos) { return length_to_stops; }
+
+    auto lengths = Split(line.substr(comma2 + 1), ',');
+    length_to_stops.reserve(lengths.size());
+
+    for (std::string_view length : lengths) {
+        auto m_pos = length.find('m');
+        if (m_pos == std::string_view::npos) continue;
+
+        std::string_view distance_part = length.substr(0, m_pos);
+        std::string_view stop_name =     length.substr(m_pos + 5);
+
+        int distance{};
+        std::from_chars(distance_part.data(),
+            distance_part.data() + distance_part.size(),
+            distance);
+        
+        length_to_stops.emplace(stop_name, distance);
+    }
+    return length_to_stops;
+}
+
 } // namespace detail
 
 void InputReader::ParseLine(std::string_view line) {
@@ -107,6 +133,7 @@ void InputReader::ParseLine(std::string_view line) {
 // Проходим списку команд и выполняем операции AddStop и AddBus
 void InputReader::ApplyCommands(transport::TransportCatalogue& catalogue) {
     using namespace detail;
+    using std::string_view;
 
     auto boundary = std::partition(
         commands_.begin(),
@@ -116,12 +143,17 @@ void InputReader::ApplyCommands(transport::TransportCatalogue& catalogue) {
     for (auto it = commands_.begin(); it != boundary; ++it) {
         catalogue.AddStop(
             it->id,
-            ParseCoordinates(std::string_view(it->description)) );
+            ParseCoordinates(string_view(it->description)) );
+    }
+    for (auto it = commands_.begin(); it != boundary; ++it) {
+        catalogue.AddDistance(
+            it->id,
+            ParseDistance(string_view(it->description)) );
     }
     for (auto it = boundary; it != commands_.end(); ++it) {
         catalogue.AddBus(
             it->id,
-            ParseRoute(std::string_view(it->description)) );
+            ParseRoute(string_view(it->description)) );
     }
 }
 

@@ -11,37 +11,41 @@
 
 namespace transport {
 
-using BusList = std::vector<std::string_view>;
+using std::string;
+using std::string_view;
+using std::vector;
+using BusList = vector<string_view>;
 
 struct Stop {
-    std::string name;
+    string name;
     geo::Coordinates coordinates;
 };
 
 struct Bus {
-    std::string name;
-    std::vector<std::string_view> stops;
+    string name;
+    std::vector<string_view> stops;
 };
 
 struct BusInfo {
     size_t stops_on_route{};
     size_t unique_stops{};
-    double route_length{};  
+    int route_length{};
+    double curvature{};
 };
 
 class TransportCatalogue {
 public:
-    void AddStop(const std::string& name, geo::Coordinates coordinates);
-    void AddBus(const std::string& name, std::vector<std::string_view> stops);
+    void AddStop(const string& name, geo::Coordinates coordinates);
+    void AddBus(const string& name, vector<string_view> stops);
     
-    const Stop* FindStop(const std::string_view stop_name) const;
-    const Bus*  FindBus(const std::string_view bus_name) const;
+    const Stop* FindStop(const string_view stop_name) const;
+    const Bus*  FindBus(const string_view bus_name) const;
     
-    // Возвращает список автобусов, проходящих через указанную остановку.
-    const BusList GetBusesForStop(std::string_view stop_name) const;
+    const BusList GetBusesForStop(string_view stop_name) const;
     
-    // Возвращает информацию о маршруте автобуса (количество остановок, длина и т.д.).
-    const BusInfo GetBusInfo(const std::string_view bus_name) const;
+    const BusInfo GetBusInfo(const string_view bus_name) const;
+
+    void AddDistance(const string_view from, const std::unordered_map<string_view, int>& length_to_stops);
 
 private:
     struct StopsHasher {
@@ -55,18 +59,17 @@ private:
     };
 
     struct StringViewHasher {
-        size_t operator()(const std::string_view& s) const {
-            return std::hash<std::string_view>{}(s);
+        size_t operator()(const string_view& s) const {
+            return std::hash<string_view>{}(s);
         }
     };
 
-
     std::deque<Stop> stops_;
     std::deque<Bus> buses_;
-    std::unordered_map<std::string_view, const Stop*> stopname_to_stop_;
-    std::unordered_map<std::string_view, const Bus*> busname_to_bus_;
-    std::unordered_map<std::string_view, std::set<std::string_view>, StringViewHasher> stop_to_buses_;
-    std::unordered_map<std::pair<const Stop*, const Stop*>, double, StopsHasher> stops_length_;  
+    std::unordered_map<string_view, const Stop*> stopname_to_stop_;
+    std::unordered_map<string_view, const Bus*> busname_to_bus_;
+    std::unordered_map<string_view, std::set<string_view>, StringViewHasher> stop_to_buses_;
+    std::unordered_map<std::pair<const Stop*, const Stop*>, int, StopsHasher> stops_length_;  
 };
 
 } // namespace transport

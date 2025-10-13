@@ -1,6 +1,7 @@
 #include <iostream>
 #include <string>
 #include <unordered_set>
+#include <iomanip>
 
 #include "stat_reader.h"
 
@@ -31,8 +32,13 @@ void PrintBus (const transport::TransportCatalogue& transport_catalogue,
         return;
     }
     const transport::BusInfo route = transport_catalogue.GetBusInfo(command);
-    output << request << ": "s << route.stops_on_route << " stops on route, "s;
-    output << route.unique_stops << " unique stops, "s << route.route_length << " route length"s << std::endl;
+    output << request << ": "s
+           << route.stops_on_route << " stops on route, "s
+           << route.unique_stops << " unique stops, "s
+
+           // Форматирование длины маршрута в научной нотации
+           << std::setprecision(6) << static_cast<double>(route.route_length) << " route length, "s
+           << std::defaultfloat << route.curvature << " curvature\n"s;
 }
 
 void PrintStop (const transport::TransportCatalogue& transport_catalogue,
