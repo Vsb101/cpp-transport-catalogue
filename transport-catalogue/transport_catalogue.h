@@ -6,6 +6,7 @@
 #include <unordered_map>
 #include <set>
 #include <string>
+#include <span>
 
 #include "geo.h"
 
@@ -14,7 +15,8 @@ namespace transport {
 using std::string;
 using std::string_view;
 using std::vector;
-using BusList = vector<string_view>;
+using BusList = std::set<std::string_view>; 
+
 
 struct Stop {
     string name;
@@ -41,11 +43,11 @@ public:
     const Stop* FindStop(const string_view stop_name) const;
     const Bus*  FindBus(const string_view bus_name) const;
     
-    const BusList GetBusesForStop(string_view stop_name) const;
+    const BusList& GetBusesForStop(string_view stop_name) const;
     
     const BusInfo GetBusInfo(const string_view bus_name) const;
 
-    void AddDistance(const string_view from, const std::unordered_map<string_view, int>& length_to_stops);
+    void AddDistance(std::string_view from, std::string_view to, int distance);
 
 private:
     struct StopsHasher {

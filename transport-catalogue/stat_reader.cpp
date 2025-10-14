@@ -11,15 +11,14 @@ namespace detail {
     
 using namespace std::string_literals;
 
-template <typename T>
-std::ostream& operator<<(std::ostream& os, const std::vector<T>& vec) {
-    bool first_element = true;
-    for (const auto& item : vec) {
-        if (!first_element) { os << " "; }
-        os << item;
-        first_element = false;
+std::ostream& operator<<(std::ostream& out, const transport::BusList& buses) {
+    bool first = true;
+    for (const auto& bus : buses) {
+        if (!first) { out << " "; }
+        out << bus;
+        first = false;
     }
-    return os;
+    return out;
 }
 
 void PrintBus (const transport::TransportCatalogue& transport_catalogue,
@@ -44,13 +43,13 @@ void PrintBus (const transport::TransportCatalogue& transport_catalogue,
 void PrintStop (const transport::TransportCatalogue& transport_catalogue,
                 std::string_view request,
                 std::ostream& output,
-                std::string_view command) { 
+                std::string_view command) {              
     const auto stop = transport_catalogue.FindStop(command);
     if (stop == nullptr) {
         output << request << ": not found\n"s;
         return;
     }
-    const std::vector<std::string_view> buses = transport_catalogue.GetBusesForStop(command);
+    const auto buses = transport_catalogue.GetBusesForStop(command);
     if (buses.empty()) {
         output << request << ": no buses\n"s;
         return;

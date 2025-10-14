@@ -15,7 +15,6 @@ struct Coordinates {
     }
 };
 
-
 inline double ComputeDistance(const Coordinates& from, const Coordinates& to) {
     using namespace std;
     if (from == to) { return 0; }

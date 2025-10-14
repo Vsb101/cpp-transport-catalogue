@@ -60,13 +60,10 @@ const Bus* TransportCatalogue::FindBus(const std::string_view name) const {
 
 // Возвращает список всех автобусов, проходящих через указанную остановку.
 // - Использует map stop_to_buses_ для получения связанных автобусов.
-const vector<std::string_view> TransportCatalogue::GetBusesForStop(std::string_view stop_name) const {
+const BusList& TransportCatalogue::GetBusesForStop(std::string_view stop_name) const {
+    static const BusList empty_set;
     auto it = stop_to_buses_.find(stop_name);
-    if (it == stop_to_buses_.end()) {
-        return {};
-    }
-
-    return {it->second.begin(), it->second.end()};
+    return (it != stop_to_buses_.end()) ? it->second : empty_set;
 }
 
 // Вычисляет и возвращает статистику маршрута автобуса.
@@ -106,12 +103,10 @@ const BusInfo TransportCatalogue::GetBusInfo(const std::string_view bus_name) co
 }
 
 // Добавляет информацию о расстоянии между двумя остановками в stops_length_.
-// - Предполагает, что обе остановки уже существуют в каталоге.
-// - Заполняет map distances для всех пар в length_to_stops.
-void TransportCatalogue::AddDistance(const std::string_view from, const std::unordered_map<std::string_view, int>& length_to_stops) {
-    for (const auto& [to, distance] : length_to_stops) {
-        stops_length_.insert({{stopname_to_stop_.at(from), stopname_to_stop_.at(to)}, distance});
-    }
+void TransportCatalogue::AddDistance(std::string_view from, std::string_view to, int distance) {
+    const Stop* from_stop = stopname_to_stop_.at(from);
+    const Stop* to_stop = stopname_to_stop_.at(to);
+    stops_length_.insert({{from_stop, to_stop}, distance});
 }
 
 } // namespace transport

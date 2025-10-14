@@ -28,6 +28,7 @@ geo::Coordinates ParseCoordinates(std::string_view str) {
     return {lat, lng};
 }
 
+
 //Удаляет пробелы в начале и конце строки
 std::string_view Trim(std::string_view string) {
     const auto start = string.find_first_not_of(' ');
@@ -103,8 +104,8 @@ std::unordered_map<std::string_view, int> ParseDistance(std::string_view line) {
     auto lengths = Split(line.substr(comma2 + 1), ',');
     length_to_stops.reserve(lengths.size());
 
-    for (std::string_view length : lengths) {
-        auto m_pos = length.find('m');
+    for (auto length : lengths) {
+        auto m_pos = length.find("m to ");
         if (m_pos == std::string_view::npos) continue;
 
         std::string_view distance_part = length.substr(0, m_pos);
@@ -146,9 +147,10 @@ void InputReader::ApplyCommands(transport::TransportCatalogue& catalogue) {
             ParseCoordinates(string_view(it->description)) );
     }
     for (auto it = commands_.begin(); it != boundary; ++it) {
-        catalogue.AddDistance(
-            it->id,
-            ParseDistance(string_view(it->description)) );
+        auto distances = ParseDistance(string_view(it->description));
+        for (const auto& [to_stop, distance] : distances) {
+            catalogue.AddDistance(it->id, to_stop, distance);
+        }
     }
     for (auto it = boundary; it != commands_.end(); ++it) {
         catalogue.AddBus(
