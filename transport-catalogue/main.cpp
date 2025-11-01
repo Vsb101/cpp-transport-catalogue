@@ -1,23 +1,23 @@
+#include "json_reader.h"
+
+#include <fstream>
 #include <iostream>
-#include <string>
-
-#include "input_reader.h"
-#include "stat_reader.h"
-//#include "transport_catalogue_test.h"
-
-using namespace transport;
-using namespace input;
-using namespace stat_reader;
 
 int main() {
-    //transport::TransportCatalogueTest test;
-    //test.RunAllTests();
+    using namespace std;
+
+    //ifstream file("test.json"s);
+    //ofstream svg_image("result.svg"s);
 
     TransportCatalogue catalogue;
+    JsonReader reader;
 
-    InputReader reader(catalogue);
-    reader.HandleBaseRequests(std::cin);
-    reader.ApplyCommands(catalogue);
-
-    HandleStatRequests(catalogue, std::cin, std::cout);
+    reader.ReadData(cin);
+    renderer::Settings settings;
+    reader.ProcessRenderSettings(settings);
+    renderer::MapRenderer renderer(settings);
+    reader.ProcessBaseRequests(catalogue, renderer);
+    RequestHandler handler(catalogue, renderer);
+    reader.ProcessStatRequests(handler, cout);
+    //handler.RenderMap().Render(cout);
 }

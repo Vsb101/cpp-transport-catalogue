@@ -1,0 +1,25 @@
+#pragma once
+
+#include "map_renderer.h"
+#include "svg.h"
+#include "transport_catalogue.h"
+
+#include <optional>
+
+// Класс RequestHandler играет роль Фасада, упрощающего взаимодействие JSON reader-а
+// с другими подсистемами приложения.
+// См. паттерн проектирования Фасад: https://ru.wikipedia.org/wiki/Фасад_(шаблон_проектирования)
+class RequestHandler {
+public:
+    RequestHandler(const TransportCatalogue& db, const renderer::MapRenderer& renderer);
+
+    [[nodiscard]] std::optional<RouteInfo> GetBusStat(const std::string_view& bus_name) const;
+
+    [[nodiscard]] std::set<std::string_view> GetBusesByStop(const std::string_view& stop_name) const;
+
+    [[nodiscard]] svg::Document RenderMap() const;
+
+private:
+    const TransportCatalogue& db_;
+    const renderer::MapRenderer& renderer_;
+};

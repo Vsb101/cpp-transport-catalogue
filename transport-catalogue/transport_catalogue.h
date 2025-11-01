@@ -1,77 +1,53 @@
 #pragma once
 
-#include <string_view>
-#include <vector>
-#include <deque>
-#include <unordered_map>
-#include <set>
 #include <string>
-#include <span>
+#include <cstdint>
 
+#include <deque>
+#include <set>
+#include <unordered_map>
+#include <unordered_set>
+#include <vector>
+#include <string>
+
+#include "domain.h"
 #include "geo.h"
 
-namespace transport {
-
-using std::string;
-using std::string_view;
-using std::vector;
-using BusList = std::set<std::string_view>; 
-
-
-struct Stop {
-    string name;
-    geo::Coordinates coordinates;
-};
-
-struct Bus {
-    string name;
-    std::vector<string_view> stops;
-};
-
-struct BusInfo {
-    size_t stops_on_route{};
-    size_t unique_stops{};
-    int route_length{};
-    double curvature{};
-};
+using  std::string_view;
+using  std::unordered_set;
+using  std::set;
+using  std::unordered_map;
+using  std::pair;
+using  std::vector;
+using  std::deque;
+using  std::string;
 
 class TransportCatalogue {
-public:
-    void AddStop(const string& name, geo::Coordinates coordinates);
-    void AddBus(const string& name, vector<string_view> stops);
     
-    const Stop* FindStop(const string_view stop_name) const;
-    const Bus*  FindBus(const string_view bus_name) const;
-    
-    const BusList& GetBusesForStop(string_view stop_name) const;
-    
-    const BusInfo GetBusInfo(const string_view bus_name) const;
+    using Buses = unordered_set<string_view>;
+    using SortedBuses = set<string_view>;
+    using DistanceMap = unordered_map<pair<const Stop*, const Stop*>, size_t, PairStopHasher, PairStopEqual>;
 
-    void AddDistance(std::string_view from, std::string_view to, int distance);
+public:
+    void AddStop(string name, geo::Coordinates position);
+    void AddDistance(string_view stopname_from, string_view stopname_to, size_t distance);
+    void AddRoute(string bus_name, const vector<string_view>& stopnames, bool is_roundtrip);
+    const Stop& FindStop(string_view stop_name) const;
+    Bus FindRoute(string_view bus_name) const;
+    RouteInfo BusRouteInfo(string_view bus_name) const;
+    SortedBuses StopInfo(string_view stop_name) const;
 
 private:
-    struct StopsHasher {
-        size_t operator()(const std::pair<const Stop*, const Stop*>& p) const {
-            size_t h1 = reinterpret_cast<size_t>(p.first);
-            size_t h2 = reinterpret_cast<size_t>(p.second);
-            h1 = (h1 >> 16) ^ (h1 << 16);
-            h2 = (h2 >> 16) ^ (h2 << 16);
-            return h1 ^ (h2 << 1);
-        }
-    };
-
-    struct StringViewHasher {
-        size_t operator()(const string_view& s) const {
-            return std::hash<string_view>{}(s);
-        }
-    };
-
-    std::deque<Stop> stops_;
-    std::deque<Bus> buses_;
-    std::unordered_map<string_view, const Stop*> stopname_to_stop_;
-    std::unordered_map<string_view, const Bus*> busname_to_bus_;
-    std::unordered_map<string_view, std::set<string_view>, StringViewHasher> stop_to_buses_;
-    std::unordered_map<std::pair<const Stop*, const Stop*>, int, StopsHasher> stops_length_;  
+    void AssociateStopWithBus(Stop *stop, const Bus *bus);
+    void AddStopImpl(const Stop &stop);
+    double CalculateRealRouteLength(string_view bus_name) const;
+    double CalculateNativeRouteLength(string_view bus_name) const;
+    size_t CountUniqueRouteStops(string_view bus_name) const;
+    
+    deque<Stop> stops_;
+    deque<Bus>  buses_;
+    unordered_map<string_view, Stop*> stopname_to_stop_;
+    unordered_map<Stop*, Buses>            stop_to_buses_;
+    unordered_map<string_view, Bus*>  bus_routes_;
+    DistanceMap stop_to_near_stop_;
 };
-
-} // namespace transport
