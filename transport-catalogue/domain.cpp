@@ -10,7 +10,6 @@ Stop::Stop(std::string_view name, geo::Coordinates position)
 
 // Оператор сравнения Stop
 bool Stop::operator==(const Stop& stop) const {
-    // Обратите внимание на возможное неравенство из-за плавающих чисел
     return name_ == stop.name_ && ApproximatelyEquals(position_, stop.position_);
 }
 

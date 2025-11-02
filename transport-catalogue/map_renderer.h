@@ -123,6 +123,11 @@ public:
     void Render(svg::Document& svg_out) const;
 
 private:
+    void RenderBusRoutes(svg::Document& svg_out, const SphereProjector& projector) const;
+    void RenderBusLabels(svg::Document& svg_out, const SphereProjector& projector) const;
+    void RenderStopPoints(svg::Document& svg_out, const SphereProjector& projector) const;
+    void RenderStopLabels(svg::Document& svg_out, const SphereProjector& projector) const;
+    
     Settings settings_;
     std::set<Bus, BusnameComparator> buses_;
 };

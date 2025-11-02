@@ -54,28 +54,15 @@ void RenderStops(Iter begin, Iter end, Func func) {
     });
 }
 
-// Основной метод визуализации: формирует SVG-документ с картой.
-// Этапы:
-// 1. Проектирование координат.
-// 2. Отрисовка линий маршрутов.
-// 3. Отрисовка подписей автобусов (с подложкой).
-// 4. Отрисовка кружков остановок.
-// 5. Отрисовка подписей остановок (с подложкой).
-// Использует цвета из палитры по циклу.
-void MapRenderer::Render(svg::Document &svg_out) const {
-    auto coordinates = ExtractAllCoordinates(buses_);
-    const SphereProjector projector(
-        coordinates.begin(),
-        coordinates.end(),
-        settings_.width_, settings_.height_, settings_.padding_
-    );
-
+// Отрисовывает линии маршрутов автобусов на карте.
+// Для каждого маршрута строится ломаная линия через все остановки.
+// Использует цвета из палитры по циклу, толщину и стиль из настроек.
+// Линии округлены на углах (ROUND join/cap) для визуальной плавности.
+void MapRenderer::RenderBusRoutes(svg::Document& svg_out, const SphereProjector& projector) const {
     size_t color_number = 0;
-
-    // Отрисовка линий маршрутов
-    for (const Bus &bus : buses_) {
+    for (const Bus& bus : buses_) {
         svg::Polyline route_line;
-        for (const Stop *stop : bus.route_) {
+        for (const Stop* stop : bus.route_) {
             route_line.AddPoint(projector(stop->position_));
         }
 
@@ -88,10 +75,15 @@ void MapRenderer::Render(svg::Document &svg_out) const {
         );
         color_number = (color_number + 1) % settings_.color_palette_.size();
     }
+}
 
-    // Отрисовка ярлыков автобусов
-    color_number = 0;
-    for (const Bus &bus : buses_) {
+// Отрисовывает текстовые ярлыки названий автобусов.
+// Для каждого маршрута добавляется подпись в начале и (при необходимости) в середине.
+// Использует жирный шрифт и цвет из палитры, а также подложку для читаемости.
+// Обеспечивает детерминированный порядок за счёт упорядочения маршрутов.
+void MapRenderer::RenderBusLabels(svg::Document& svg_out, const SphereProjector& projector) const {
+    size_t color_number = 0;
+    for (const Bus& bus : buses_) {
         svg::Text bus_label = svg::Text()
             .SetFillColor(settings_.color_palette_[color_number])
             .SetOffset(settings_.bus_label_offset_)
@@ -123,8 +115,14 @@ void MapRenderer::Render(svg::Document &svg_out) const {
         }
         color_number = (color_number + 1) % settings_.color_palette_.size();
     }
+}
 
-    //Сбор и сортировка уникальных остановок
+// Отрисовывает кружки, обозначающие остановки на карте.
+// Все остановки собираются в упорядоченное множество по имени.
+// Каждая остановка отмечается белым кружком с заданным радиусом.
+// Порядок отрисовки — лексикографический, для стабильности изображения.
+void MapRenderer::RenderStopPoints(svg::Document& svg_out, const SphereProjector& projector) const {
+    // Сбор и сортировка уникальных остановок
     std::set<const Stop*, StopnameComparator> sorted_stops;
     for (const Bus& bus : buses_) {
         for (const Stop* stop : bus.route_) {
@@ -132,17 +130,28 @@ void MapRenderer::Render(svg::Document &svg_out) const {
         }
     }
 
-    //Отрисовка кружков остановок
     svg::Circle stop_point = svg::Circle()
         .SetRadius(settings_.stop_radius_)
-        .SetFillColor(settings_.color_palette_[color_number])
         .SetFillColor("white");
 
     for (const Stop* stop : sorted_stops) {
         svg_out.Add(stop_point.SetCenter(projector(stop->position_)));
     }
+}
 
-    // Отрисовка подписей остановок
+// Отрисовывает текстовые подписи названий остановок.
+// Подписи добавляются поверх кружков, смещены относительно центра.
+// Используется чёрный цвет текста и прозрачная подложка для контраста.
+// Остановки обрабатываются в лексикографическом порядке для детерминированности.
+void MapRenderer::RenderStopLabels(svg::Document& svg_out, const SphereProjector& projector) const {
+    // Сбор и сортировка уникальных остановок
+    std::set<const Stop*, StopnameComparator> sorted_stops;
+    for (const Bus& bus : buses_) {
+        for (const Stop* stop : bus.route_) {
+            sorted_stops.insert(stop);
+        }
+    }
+
     svg::Text stop_label = svg::Text()
         .SetFontSize(settings_.stop_label_font_size_)
         .SetOffset(settings_.stop_label_offset_)
@@ -161,6 +170,28 @@ void MapRenderer::Render(svg::Document &svg_out) const {
         svg_out.Add(stop_label_underlayer.SetPosition(projector(stop->position_)).SetData(stop->name_));
         svg_out.Add(stop_label.SetPosition(projector(stop->position_)).SetData(stop->name_));
     }
+}
+
+// Основной метод визуализации: формирует SVG-документ с картой.
+// Этапы:
+// 1. Проектирование координат.
+// 2. Отрисовка линий маршрутов.
+// 3. Отрисовка подписей автобусов (с подложкой).
+// 4. Отрисовка кружков остановок.
+// 5. Отрисовка подписей остановок (с подложкой).
+// Использует цвета из палитры по циклу.
+void MapRenderer::Render(svg::Document& svg_out) const {
+    auto coordinates = ExtractAllCoordinates(buses_);
+    const SphereProjector projector(
+        coordinates.begin(),
+        coordinates.end(),
+        settings_.width_, settings_.height_, settings_.padding_
+    );
+
+    RenderBusRoutes(svg_out, projector);
+    RenderBusLabels(svg_out, projector);
+    RenderStopPoints(svg_out, projector);
+    RenderStopLabels(svg_out, projector);
 }
 
 } // renderer

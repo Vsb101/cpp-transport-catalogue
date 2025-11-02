@@ -47,7 +47,7 @@ private:
     deque<Stop> stops_;
     deque<Bus>  buses_;
     unordered_map<string_view, Stop*> stopname_to_stop_;
-    unordered_map<Stop*, Buses>            stop_to_buses_;
+    unordered_map<Stop*, Buses>       stop_to_buses_;
     unordered_map<string_view, Bus*>  bus_routes_;
     DistanceMap stop_to_near_stop_;
 };
