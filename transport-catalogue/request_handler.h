@@ -19,6 +19,8 @@ public:
 
     [[nodiscard]] svg::Document RenderMap() const;
 
+    [[nodiscard]] const Stop* GetStop(const std::string_view& stop_name) const;
+
 private:
     const TransportCatalogue& db_;
     const renderer::MapRenderer& renderer_;

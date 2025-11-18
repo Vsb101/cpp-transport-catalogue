@@ -36,3 +36,9 @@ svg::Document RequestHandler::RenderMap() const {
     renderer_.Render(doc);
     return doc;
 }
+
+// Возвращает указатель на остановку по её имени.
+const Stop* RequestHandler::GetStop(const std::string_view& stop_name) const {
+    return db_.FindStop(stop_name);
+}
+
