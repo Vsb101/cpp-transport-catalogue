@@ -9,7 +9,9 @@
 namespace json {
 
 class Node;
-using Dict = std::map<std::string, Node>;
+// std::less<> нужен для Dict в json_reader.h
+using Dict = std::map<std::string, Node, std::less<>>;
+
 using Array = std::vector<Node>;
 
 class ParsingError : public std::runtime_error {

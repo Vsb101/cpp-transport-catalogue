@@ -10,17 +10,53 @@ using namespace std::literals;
 
 namespace {
 
+// === Ключи JSON ===
+static constexpr std::string_view k_type_key = "type";
+static constexpr std::string_view k_id_key = "id";
+static constexpr std::string_view k_name_key = "name";
+static constexpr std::string_view k_stops_key = "stops";
+static constexpr std::string_view k_is_roundtrip_key = "is_roundtrip";
+static constexpr std::string_view k_road_distances_key = "road_distances";
+static constexpr std::string_view k_base_requests_key = "base_requests";
+static constexpr std::string_view k_stat_requests_key = "stat_requests";
+static constexpr std::string_view k_render_settings_key = "render_settings";
+static constexpr std::string_view k_latitude_key = "latitude";
+static constexpr std::string_view k_longitude_key = "longitude";
+
+
+// === Типы запросов ===
+static constexpr std::string_view k_stop_type = "Stop";
+static constexpr std::string_view k_bus_type = "Bus";
+static constexpr std::string_view k_map_type = "Map";
+
+// === Ключи рендер-настроек ===
+static constexpr std::string_view k_width_key = "width";
+static constexpr std::string_view k_height_key = "height";
+static constexpr std::string_view k_padding_key = "padding";
+static constexpr std::string_view k_line_width_key = "line_width";
+static constexpr std::string_view k_stop_radius_key = "stop_radius";
+static constexpr std::string_view k_bus_label_font_size_key = "bus_label_font_size";
+static constexpr std::string_view k_bus_label_offset_key = "bus_label_offset";
+static constexpr std::string_view k_stop_label_font_size_key = "stop_label_font_size";
+static constexpr std::string_view k_stop_label_offset_key = "stop_label_offset";
+static constexpr std::string_view k_underlayer_width_key = "underlayer_width";
+static constexpr std::string_view k_underlayer_color_key = "underlayer_color";
+static constexpr std::string_view k_color_palette_key = "color_palette";
+
 // Извлекает географические координаты (широту и долготу) из JSON-словаря.
 // Валидирует наличие и тип полей. При ошибке возвращает нулевые координаты.
 // Используется при добавлении остановок для построения карты маршрутов.
-geo::Coordinates ExtractCoordinates(const json::Dict& dict) {
-    auto lat_it = dict.find("latitude");
-    auto lng_it = dict.find("longitude");
-    if (lat_it == dict.end() || lng_it == dict.end() ||
-        !lat_it->second.IsDouble() || !lng_it->second.IsDouble()) {
-        return {0.0, 0.0};  // или бросить исключение, если нужно
-    }
-    return { lat_it->second.AsDouble(), lng_it->second.AsDouble() };
+std::optional<geo::Coordinates> ExtractCoordinates(const json::Dict& dict) {
+    auto lat_it = dict.find(k_latitude_key);
+    auto lng_it = dict.find(k_longitude_key);
+
+    if (lat_it == dict.end() || !lat_it->second.IsDouble()) return std::nullopt;
+    if (lng_it == dict.end() || !lng_it->second.IsDouble()) return std::nullopt;
+
+    return std::make_optional<geo::Coordinates>(
+        lat_it->second.AsDouble(), 
+        lng_it->second.AsDouble()
+    );
 }
 
 // Извлекает цвет из JSON-узла: поддерживает строковые цвета ("red", "#ff0000")
@@ -29,19 +65,28 @@ geo::Coordinates ExtractCoordinates(const json::Dict& dict) {
 svg::Color ExtractColor(const json::Node& node) {
     if (node.IsString()) { return node.AsString(); }
     if (!node.IsArray()) { return {}; }
+
     const auto& arr = node.AsArray();
+    
     if (arr.size() == 3 && arr[0].IsInt() && arr[1].IsInt() && arr[2].IsInt()) {
-        return svg::Rgb(
-            arr[0].AsInt(),
-            arr[1].AsInt(),
-            arr[2].AsInt());
+        auto r = arr[0].AsInt();
+        auto g = arr[1].AsInt();
+        auto b = arr[2].AsInt();
+        if (r < 0 || r > 255 || g < 0 || g > 255 || b < 0 || b > 255) { return {}; }
+
+        return svg::Rgb(r, g, b);
     }
-    if (arr.size() == 4 && arr[0].IsInt() && arr[1].IsInt() && arr[2].IsInt() && arr[3].IsDouble()) {
-        return svg::Rgba(
-            arr[0].AsInt(),
-            arr[1].AsInt(),
-            arr[2].AsInt(),
-            arr[3].AsDouble());
+
+    if (arr.size() == 4 &&
+        arr[0].IsInt() && arr[1].IsInt() && arr[2].IsInt() && arr[3].IsDouble()) {
+        
+        auto r = arr[0].AsInt();
+        auto g = arr[1].AsInt();
+        auto b = arr[2].AsInt();
+        auto a = arr[3].AsDouble();
+        if (r < 0 || r > 255 || g < 0 || g > 255 || b < 0 || b > 255 || a < 0.0 || a > 1.0) { return {}; }
+
+        return svg::Rgba(r, g, b, a);
     }
     return {};
 }
@@ -71,9 +116,9 @@ void JsonReader::ReadData(std::istream& input) {
 // Обеспечивает правильный порядок загрузки данных и передаёт управление специализированным обработчикам.
 // Является центральным «проводником» на этапе построения модели.
 void JsonReader::ProcessBaseRequests(TransportCatalogue& db, renderer::MapRenderer& map) const {
-    const auto root = document_.GetRoot().AsDict();
+    const auto& root = document_.GetRoot().AsDict();
 
-    auto base_requests_it = root.find("base_requests");
+    auto base_requests_it = root.find(k_base_requests_key);
     if (base_requests_it == root.end() || !base_requests_it->second.IsArray()) {
         return;
     }
@@ -88,173 +133,75 @@ void JsonReader::ProcessBaseRequests(TransportCatalogue& db, renderer::MapRender
 // Для каждого запроса формирует JSON-ответ с данными или сообщением об ошибке.
 // Гарантирует наличие поля "request_id" и корректный формат вывода.
 // Централизованно обрабатывает все типы запросов, обеспечивая единообразие ответов.
-/*void JsonReader::ProcessStatRequests(const RequestHandler& db, std::ostream& output) const {
-    json::Array responses;
-
-    const auto root = document_.GetRoot().AsDict();
-
-    auto stat_it = root.find("stat_requests");
-    if (stat_it == root.end() || !stat_it->second.IsArray()) {
-        json::Print(json::Document(std::move(responses)), output);
-        return;
-    }
-    const auto& stat_requests = stat_it->second.AsArray();
-
-    for (const auto& request : stat_requests) {
-        json::Builder builder;
-        builder.StartDict();
-
-        // Проверяем ID
-        auto id_it = request.AsDict().find("id");
-        if (id_it == request.AsDict().end() || !id_it->second.IsInt()) {
-            builder.Key("request_id").Value(0);
-            builder.Key("error_message").Value("invalid request id");
-            responses.push_back(builder.EndDict().Build());
-            continue;
-        }
-        int id = id_it->second.AsInt();
-        builder.Key("request_id").Value(id);
-
-        // Проверяем тип
-        auto type_it = request.AsDict().find("type");
-        if (type_it == request.AsDict().end() || !type_it->second.IsString()) {
-            builder.Key("error_message").Value("invalid type");
-            responses.push_back(builder.EndDict().Build());
-            continue;
-        }
-        std::string_view type = type_it->second.AsString();
-
-        if (type == "Bus"sv) {
-            auto name_it = request.AsDict().find("name");
-            if (name_it == request.AsDict().end() || !name_it->second.IsString()) {
-                builder.Key("error_message").Value("invalid bus name");
-            } else {
-                auto route_info = db.GetBusStat(name_it->second.AsString());
-                if (route_info) {
-                    auto node = AsJsonNode(*route_info);
-                    for (const auto& [k, v] : node.AsDict()) {
-                        builder.Key(k).Value(v.GetValue());
-                    }
-                } else {
-                    builder.Key("error_message").Value("not found");
-                }
-            }
-        } else if (type == "Stop"sv) {
-            auto name_it = request.AsDict().find("name");
-            if (name_it == request.AsDict().end() || !name_it->second.IsString()) {
-                builder.Key("error_message").Value("invalid stop name");
-            } else {
-                if (!db.GetStop(name_it->second.AsString())) {
-                    builder.Key("error_message").Value("not found");
-                } else {
-                    auto buses = db.GetBusesByStop(name_it->second.AsString());
-                    auto arr = builder.Key("buses").StartArray();
-                    for (const auto& bus : buses) {
-                        arr.Value(std::string(bus));
-                    }
-                    arr.EndArray();
-                }
-            }
-        } else if (type == "Map"sv) {
-            std::ostringstream map_ss;
-            db.RenderMap().Render(map_ss);
-            builder.Key("map").Value(map_ss.str());
-        } else {
-            builder.Key("error_message").Value("unknown type");
-        }
-
-        responses.push_back(builder.EndDict().Build());
-    }
-
-    json::Print(json::Document(std::move(responses)), output);
-}*/
 void JsonReader::ProcessStatRequests(const RequestHandler& db, std::ostream& output) const {
     json::Array responses;
 
-    const auto root = document_.GetRoot().AsDict();
+    const auto& root = document_.GetRoot().AsDict();
 
-    auto stat_it = root.find("stat_requests");
+    auto stat_it = root.find(k_stat_requests_key);
     if (stat_it == root.end() || !stat_it->second.IsArray()) {
-        json::Print(json::Document(std::move(responses)), output);
+        OutputResponses(std::move(responses), output);
         return;
     }
+
     const auto& stat_requests = stat_it->second.AsArray();
+    responses.reserve(stat_requests.size());
 
     for (const auto& request : stat_requests) {
         if (request.IsDict()) {
-            json::Node response = ProcessOneStatRequest(request.AsDict(), db);
-            responses.push_back(std::move(response));
+            responses.push_back(ProcessOneStatRequest(request.AsDict(), db));
         }
     }
-    // Вывод ответа
+
     OutputResponses(std::move(responses), output);
 }
-
 
 // Настраивает параметры визуализации карты из JSON-документа.
 // Извлекает значения ширины, высоты, цветов, шрифтов и других настроек,
 // используя безопасные проверки. Если параметр отсутствует — применяется значение по умолчанию.
 // Поддерживает сложные типы: массивы для цветов и координат.
 void JsonReader::ProcessRenderSettings(renderer::Settings& settings) const {
-    const auto root = document_.GetRoot().AsDict();
+    const auto& root = document_.GetRoot().AsDict();
 
-    auto rs_it = root.find("render_settings");
+    auto rs_it = root.find(k_render_settings_key);
     if (rs_it == root.end() || !rs_it->second.IsDict()) { return; }
     const auto& render_settings = rs_it->second.AsDict();
 
-    // Извлекает double-значение по ключу из настроек рендеринга.
-    // Если ключ отсутствует или значение не является числом с плавающей точкой —
-    // возвращает значение по умолчанию.
     auto get_double = [&](std::string_view key, double default_value) -> double {
-        auto it = render_settings.find(std::string(key));
-        if (it != render_settings.end() && it->second.IsDouble()) {
-            return it->second.AsDouble();
-        }
-        return default_value;
+        auto it = render_settings.find(key);
+        return (it != render_settings.end() && it->second.IsDouble()) ? it->second.AsDouble() : default_value;
     };
 
-    // Извлекает int-значение по ключу из настроек рендеринга.
-    // Если ключ отсутствует или значение не является целым числом —
-    // возвращает значение по умолчанию.
     auto get_int = [&](std::string_view key, int default_value) -> int {
-        auto it = render_settings.find(std::string(key));
-        if (it != render_settings.end() && it->second.IsInt()) {
-            return it->second.AsInt();
-        }
-        return default_value;
+        auto it = render_settings.find(key);
+        return (it != render_settings.end() && it->second.IsInt()) ? it->second.AsInt() : default_value;
     };
 
-    // Извлекает точку (x, y) из массива [x, y] по ключу.
-    // Ожидает массив из двух чисел с плавающей точкой. Если формат неверен —
-    // возвращает (0.0, 0.0).
     auto get_point = [&](std::string_view key) -> svg::Point {
-        auto it = render_settings.find(std::string(key));
-        if (it != render_settings.end() && it->second.IsArray()) {
-            const auto& arr = it->second.AsArray();
-            if (arr.size() == 2 && arr[0].IsDouble() && arr[1].IsDouble()) {
-                return svg::Point{ arr[0].AsDouble(), arr[1].AsDouble() };
-            }
-        }
-        return svg::Point{0.0, 0.0};
+        auto it = render_settings.find(key);
+        if (it == render_settings.end() || !it->second.IsArray()) return svg::Point{0.0, 0.0};
+        const auto& arr = it->second.AsArray();
+        if (arr.size() != 2 || !arr[0].IsDouble() || !arr[1].IsDouble()) return svg::Point{0.0, 0.0};
+        return svg::Point{ arr[0].AsDouble(), arr[1].AsDouble() };
     };
 
-    settings.width_                = get_double("width", 800.0);
-    settings.height_               = get_double("height", 600.0);
-    settings.padding_              = get_double("padding", 5.0);
-    settings.line_width_           = get_double("line_width", 4.0);
-    settings.stop_radius_          = get_double("stop_radius", 5.0);
-    settings.bus_label_font_size_  = get_int("bus_label_font_size", 20);
-    settings.bus_label_offset_     = get_point("bus_label_offset");
-    settings.stop_label_font_size_ = get_int("stop_label_font_size", 15);
-    settings.stop_label_offset_    = get_point("stop_label_offset");
-    settings.underlayer_width_     = get_double("underlayer_width", 3.0);
+    settings.width_                = get_double(k_width_key, 800.0);
+    settings.height_               = get_double(k_height_key, 600.0);
+    settings.padding_              = get_double(k_padding_key, 5.0);
+    settings.line_width_           = get_double(k_line_width_key, 4.0);
+    settings.stop_radius_          = get_double(k_stop_radius_key, 5.0);
+    settings.bus_label_font_size_  = get_int(k_bus_label_font_size_key, 20);
+    settings.bus_label_offset_     = get_point(k_bus_label_offset_key);
+    settings.stop_label_font_size_ = get_int(k_stop_label_font_size_key, 15);
+    settings.stop_label_offset_    = get_point(k_stop_label_offset_key);
+    settings.underlayer_width_     = get_double(k_underlayer_width_key, 3.0);
 
-    auto color_it = render_settings.find("underlayer_color");
+    auto color_it = render_settings.find(k_underlayer_color_key);
     if (color_it != render_settings.end()) {
         settings.underlayer_color_ = ExtractColor(color_it->second);
     }
 
-    auto palette_it = render_settings.find("color_palette");
+    auto palette_it = render_settings.find(k_color_palette_key);
     if (palette_it != render_settings.end() && palette_it->second.IsArray()) {
         const auto& palette = palette_it->second.AsArray();
         settings.color_palette_.clear();
@@ -269,50 +216,39 @@ void JsonReader::ProcessRenderSettings(renderer::Settings& settings) const {
 // Для каждой остановки читает название и координаты, игнорируя некорректные записи.
 // Является первым шагом в построении транспортной модели.
 void JsonReader::ProcessStops(const json::Array& base_requests, TransportCatalogue& db) const {
-    // Добавляем остановки
     for (const auto& request : base_requests) {
         if (!request.IsDict()) continue;
         const auto& dict = request.AsDict();
 
-        auto type_it = dict.find("type");
-        if (type_it == dict.end() || !type_it->second.IsString()) continue;
-        std::string_view type = type_it->second.AsString();
+        auto stop_name = GetRequestNameIfType(dict, k_stop_type);
+        if (!stop_name) continue;
 
-        if (type == "Stop"sv) {
-            auto name_it = dict.find("name");
-            if (name_it == dict.end() || !name_it->second.IsString()) continue;
-            std::string_view name = name_it->second.AsString();
-            db.AddStop(std::string(name), ExtractCoordinates(dict));
-        }
+        auto coords = ExtractCoordinates(dict);
+        if (!coords) continue;
+        db.AddStop(std::string(*stop_name), *coords);
     }
 }
+
 
 // Загружает данные о расстояниях между остановками из базовых запросов.
 // Поддерживает несимметричные расстояния (A → B ≠ B → A) и игнорирует невалидные поля.
 // Позволяет точно рассчитывать реальную длину маршрутов.
 void JsonReader::ProcessDistances(const json::Array& base_requests, TransportCatalogue& db) const {
-    // Добавляем расстояния
     for (const auto& request : base_requests) {
         if (!request.IsDict()) continue;
         const auto& dict = request.AsDict();
 
-        auto type_it = dict.find("type");
-        if (type_it == dict.end() || !type_it->second.IsString()) continue;
-        std::string_view type = type_it->second.AsString();
+        // Проверяем, что это Stop, и получаем имя
+        auto stopname = GetRequestNameIfType(dict, k_stop_type);
+        if (!stopname) continue;
 
-        if (type == "Stop"sv) {
-            auto name_it = dict.find("name");
-            if (name_it == dict.end() || !name_it->second.IsString()) continue;
-            std::string stopname = std::string(name_it->second.AsString());
+        auto dist_it = dict.find(k_road_distances_key);
+        if (dist_it == dict.end() || !dist_it->second.IsDict()) continue;
+        const auto& distances = dist_it->second.AsDict();
 
-            auto dist_it = dict.find("road_distances");
-            if (dist_it == dict.end() || !dist_it->second.IsDict()) continue;
-            const auto& distances = dist_it->second.AsDict();
-
-            for (const auto& [dst_name, node] : distances) {
-                if (node.IsInt()) {
-                    db.AddDistance(stopname, std::string(dst_name), node.AsInt());
-                }
+        for (const auto& [dst_name, node] : distances) {
+            if (node.IsInt()) {
+                db.AddDistance(std::string(*stopname), std::string(dst_name), node.AsInt());
             }
         }
     }
@@ -322,51 +258,53 @@ void JsonReader::ProcessDistances(const json::Array& base_requests, TransportCat
 // Автоматически формирует кольцевые маршруты при необходимости и передаёт данные рендереру.
 // Завершает этап инициализации, подготавливая данные для визуализации.
 void JsonReader::ProcessBuses(const json::Array& base_requests, TransportCatalogue& db, renderer::MapRenderer& map) const {
-    // Добавляем маршруты
     for (const auto& request : base_requests) {
         if (!request.IsDict()) continue;
         const auto& dict = request.AsDict();
 
-        auto type_it = dict.find("type");
-        if (type_it == dict.end() || !type_it->second.IsString()) continue;
-        std::string_view type = type_it->second.AsString();
+        // Проверяем, что это Bus-запрос, и извлекаем имя
+        auto bus_name = GetRequestNameIfType(dict, k_bus_type);
+        if (!bus_name) continue;
 
-        if (type == "Bus"sv) {
-            auto name_it = dict.find("name");
-            if (name_it == dict.end() || !name_it->second.IsString()) continue;
-            std::string busname = std::string(name_it->second.AsString());
+        // Извлечение остановок
+        auto stops_it = dict.find(k_stops_key);
+        if (stops_it == dict.end() || !stops_it->second.IsArray()) continue;
+        const auto& stops_array = stops_it->second.AsArray();
 
-            auto stops_it = dict.find("stops");
-            if (stops_it == dict.end() || !stops_it->second.IsArray()) continue;
-            const auto& stops_array = stops_it->second.AsArray();
-
-            std::vector<std::string_view> stops;
-            for (const auto& stop : stops_array) {
-                if (stop.IsString()) {
-                    stops.push_back(stop.AsString());
-                }
+        std::vector<std::string_view> stops;
+        stops.reserve(stops_array.size());
+        for (const auto& stop : stops_array) {
+            if (stop.IsString()) {
+                stops.push_back(stop.AsString());
             }
+        }
 
-            bool is_roundtrip = true;
-            auto roundtrip_it = dict.find("is_roundtrip");
-            if (roundtrip_it != dict.end() && roundtrip_it->second.IsBool()) {
-                is_roundtrip = roundtrip_it->second.AsBool();
-            }
+        // Проверка is_roundtrip
+        bool is_roundtrip = true;
+        auto roundtrip_it = dict.find(k_is_roundtrip_key);
+        if (roundtrip_it != dict.end() && roundtrip_it->second.IsBool()) {
+            is_roundtrip = roundtrip_it->second.AsBool();
+        }
 
-            if (!is_roundtrip) {
-                std::vector<std::string_view> results(stops.begin(), stops.end());
-                results.insert(results.end(), std::next(stops.rbegin()), stops.rend());
-                stops = std::move(results);
-            } else if (!stops.empty() && stops.front() != stops.back()) {
-                stops.push_back(stops.front());
-            }
+        // Построение полного маршрута
+        if (!is_roundtrip) {
+            // Туда и обратно: A B C → A B C B A (без дублирования последней)
+            std::vector<std::string_view> result;
+            result.reserve(stops.size() * 2 - 1);
+            result.assign(stops.begin(), stops.end());
+            result.insert(result.end(), std::next(stops.rbegin()), stops.rend());
+            stops = std::move(result);
+        } 
+        else if (!stops.empty() && stops.front() != stops.back()) {
+            // Кольцевой маршрут: добавляем первую остановку в конец
+            stops.push_back(stops.front());
+        }
 
-            if (!stops.empty()) {
-                db.AddRoute(busname, stops, is_roundtrip);
-                const Bus* bus = db.FindRoute(busname);
-                if (bus) {
-                    map.AddBus(*bus);
-                }
+        // Добавляем в каталог, если есть остановки
+        if (!stops.empty()) {
+            db.AddRoute(std::string(*bus_name), stops, is_roundtrip);
+            if (const Bus* bus = db.FindRoute(*bus_name)) {
+                map.AddBus(*bus);
             }
         }
     }
@@ -382,8 +320,7 @@ json::Node JsonReader::ProcessOneStatRequest(const json::Dict& request, const Re
     json::Builder builder;
     builder.StartDict();
 
-    // Валидация ID
-    auto id_it = request.find("id");
+    auto id_it = request.find(k_id_key);
     if (id_it == request.end() || !id_it->second.IsInt()) {
         builder.Key("request_id").Value(0);
         builder.Key("error_message").Value("invalid request id");
@@ -392,21 +329,20 @@ json::Node JsonReader::ProcessOneStatRequest(const json::Dict& request, const Re
     int id = id_it->second.AsInt();
     builder.Key("request_id").Value(id);
 
-    // Валидация type
-    auto type_it = request.find("type");
+    auto type_it = request.find(k_type_key);
     if (type_it == request.end() || !type_it->second.IsString()) {
         builder.Key("error_message").Value("invalid type");
         return builder.EndDict().Build();
     }
     std::string_view type = type_it->second.AsString();
 
-    // Обработка по типу
-    if (type == "Bus"sv) {
-        auto name_it = request.find("name");
+    if (type == k_bus_type) {
+        auto name_it = request.find(k_name_key);
         if (name_it == request.end() || !name_it->second.IsString()) {
             builder.Key("error_message").Value("invalid bus name");
         } else {
-            auto route_info = db.GetBusStat(name_it->second.AsString());
+            std::string_view bus_name = name_it->second.AsString();
+            auto route_info = db.GetBusStat(bus_name);
             if (route_info) {
                 auto node = AsJsonNode(*route_info);
                 for (const auto& [k, v] : node.AsDict()) {
@@ -416,23 +352,24 @@ json::Node JsonReader::ProcessOneStatRequest(const json::Dict& request, const Re
                 builder.Key("error_message").Value("not found");
             }
         }
-    } else if (type == "Stop"sv) {
-        auto name_it = request.find("name");
+    } else if (type == k_stop_type) {
+        auto name_it = request.find(k_name_key);
         if (name_it == request.end() || !name_it->second.IsString()) {
             builder.Key("error_message").Value("invalid stop name");
         } else {
-            if (!db.GetStop(name_it->second.AsString())) {
+            std::string_view stop_name = name_it->second.AsString();
+            if (!db.GetStop(stop_name)) {
                 builder.Key("error_message").Value("not found");
             } else {
-                auto buses = db.GetBusesByStop(name_it->second.AsString());
-                auto arr = builder.Key("buses").StartArray();
+                auto buses = db.GetBusesByStop(stop_name);
+                builder.Key("buses").StartArray();
                 for (const auto& bus : buses) {
-                    arr.Value(std::string(bus));
+                    builder.Value(std::string(bus));
                 }
-                arr.EndArray();
+                builder.EndArray();
             }
         }
-    } else if (type == "Map"sv) {
+    } else if (type == k_map_type) {
         std::ostringstream map_ss;
         db.RenderMap().Render(map_ss);
         builder.Key("map").Value(map_ss.str());
@@ -445,7 +382,30 @@ json::Node JsonReader::ProcessOneStatRequest(const json::Dict& request, const Re
 
 // Печатает итоговый массив ответов в выходной поток в формате JSON.
 // Используется для отправки результата обработки stat_requests.
-// Обёртка вокруг json::Print - вроде и не требется пока что
 void JsonReader::OutputResponses(json::Array responses, std::ostream& output) const {
     json::Print(json::Document(std::move(responses)), output);
+}
+
+// Проверяет, является ли JSON-объект запросом указанного типа (например, "Stop" или "Bus"),
+// и возвращает имя объекта, если проверка пройдена.
+// Возвращает std::nullopt, если:
+// - отсутствует поле "type",
+// - "type" не является строкой,
+// - значение "type" не совпадает с ожидаемым,
+// - отсутствует поле "name" или оно не строка.
+// Используется для единообразной обработки типизированных запросов в ProcessStops, ProcessBuses и других методах.
+std::optional<std::string_view> JsonReader::GetRequestNameIfType(const json::Dict& dict, std::string_view expected_type) {
+    auto type_it = dict.find(k_type_key);
+    if (type_it == dict.end() || !type_it->second.IsString()) {
+        return std::nullopt;
+    }
+    if (type_it->second.AsString() != expected_type) {
+        return std::nullopt;
+    }
+
+    auto name_it = dict.find(k_name_key);
+    if (name_it == dict.end() || !name_it->second.IsString()) {
+        return std::nullopt;
+    }
+    return name_it->second.AsString();
 }

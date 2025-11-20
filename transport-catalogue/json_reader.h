@@ -27,5 +27,7 @@ private:
     json::Node ProcessOneStatRequest(const json::Dict& request, const RequestHandler& db) const;
     void OutputResponses(json::Array responses, std::ostream& output) const;
 
+    static std::optional<std::string_view> GetRequestNameIfType(const json::Dict& dict, std::string_view expected_type);
+
     json::Document document_{{}};
 };
