@@ -1,23 +1,44 @@
 #include "json_reader.h"
+#include "transport_router.h"
+#include "request_handler.h"
+#include "map_renderer.h"
 
-#include <fstream>
 #include <iostream>
 
 int main() {
-    using namespace std;
+    try {
+        TransportCatalogue catalogue;
+        JsonReader reader;
 
-    //ifstream file("test.json"s);
-    //ofstream svg_image("result.svg"s);
+        // === Читаем JSON ===
+        reader.ReadData(std::cin);
 
-    TransportCatalogue catalogue;
-    JsonReader reader;
+        // ===  Настраиваем рендерер ===
+        renderer::Settings render_settings;
+        reader.ProcessRenderSettings(render_settings);
+        renderer::MapRenderer renderer(render_settings);
 
-    reader.ReadData(cin);
-    renderer::Settings settings;
-    reader.ProcessRenderSettings(settings);
-    renderer::MapRenderer renderer(settings);
-    reader.ProcessBaseRequests(catalogue, renderer);
-    RequestHandler handler(catalogue, renderer);
-    reader.ProcessStatRequests(handler, cout);
-    //handler.RenderMap().Render(cout);
+        // === Загружаем базу: остановки, маршруты, расстояния ===
+        reader.ProcessBaseRequests(catalogue, renderer);
+
+        // === Читаем настройки маршрутизации ===
+        RoutingSettings routing_settings = reader.ReadRoutingSettings();
+
+        // === Создаём TransportRouter через Builder ===
+        TransportRouter router = TransportRouterBuilder{}
+        .Build(catalogue, routing_settings);
+
+
+        // === Создаём обработчик с полным набором данных ===
+        RequestHandler handler(catalogue, renderer, router);
+
+        // === Обрабатываем стат-запросы ===
+        reader.ProcessStatRequests(handler, std::cout);
+
+        return 0;
+    }
+    catch (const std::exception& e) {
+        std::cerr << "Error: " << e.what() << std::endl;
+        return 1;
+    }
 }

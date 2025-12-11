@@ -1,11 +1,18 @@
 #include "request_handler.h"
+#include "transport_catalogue.h"
+#include "transport_router.h"
 
 // Инициализирует обработчик запросов, сохраняя ссылки на базу данных и рендерер карты.
 // Используется для предоставления единого интерфейса к функционалу справочника и визуализации.
 // Объекты передаются по константной ссылке — владение не передаётся.
 // Гарантируется, что ссылки будут действительны на всём протяжении жизни RequestHandler.
-RequestHandler::RequestHandler(const TransportCatalogue &db, const renderer::MapRenderer &renderer)
-    : db_(db), renderer_(renderer) {}
+RequestHandler::RequestHandler(const TransportCatalogue& db,
+                               const renderer::MapRenderer& renderer,
+                               const TransportRouter& router)
+    : db_(db)
+    , renderer_(renderer)
+    , router_(router) {
+}
 
 // Возвращает статистику по автобусному маршруту: количество остановок, уникальных остановок, длину и кривизну.
 // Если маршрут с указанным именем не найден — возвращает std::nullopt.
@@ -42,3 +49,11 @@ const Stop* RequestHandler::GetStop(const std::string_view& stop_name) const {
     return db_.FindStop(stop_name);
 }
 
+// Возвращает маршрут от остановки 'from' до 'to' в виде последовательности действий (ожидание, пересадка).
+// Использует внутренний TransportRouter для построения пути.
+// Каждый элемент маршрута содержит тип действия, время и детали (название автобуса, остановки и т.д.).
+// Возвращает nullopt, если маршрут не найден. // Вызывается при обработке запроса "Route".
+std::optional<std::vector<TransportRouter::RouteData>> RequestHandler::BuildRoute(
+    std::string_view from, std::string_view to) const {
+    return router_.BuildRoute(from, to);
+}

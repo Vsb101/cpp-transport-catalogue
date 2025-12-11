@@ -108,6 +108,16 @@ size_t TransportCatalogue::CountUniqueRouteStops(const Bus* bus) const {
     return unique_stops.size();
 }
 
+size_t TransportCatalogue::GetDistance(const Stop *from, const Stop *to) const {
+    if (stop_to_near_stop_.count({from, to})) {
+        return stop_to_near_stop_.at({from, to});
+    }
+    if (stop_to_near_stop_.count({to, from})) {
+        return stop_to_near_stop_.at({to, from});
+    }
+    return 0;
+}
+
 void TransportCatalogue::AssociateStopWithBus(Stop *stop, const Bus *bus) {
     stop_to_buses_[stop].insert(bus->name_);
 }
@@ -130,3 +140,20 @@ void TransportCatalogue::AddDistance(string_view stopname_from, string_view stop
     if (!from || !to) { return; }
     stop_to_near_stop_[{from, to}] = distance;
 }
+
+map<string_view, const Bus *> TransportCatalogue::GetAllSortedBuses() const noexcept {
+    map<string_view, const Bus *> result;
+    for (const auto &bus: bus_routes_) {
+        result.emplace(bus);
+    }
+    return result;
+}
+
+map<string_view, const Stop *> TransportCatalogue::GetAllSortedStops() const noexcept {
+    map<string_view, const Stop *> result;
+    for (const auto &stop: stopname_to_stop_) {
+        result.emplace(stop);
+    }
+    return result;
+}
+

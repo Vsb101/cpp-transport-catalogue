@@ -18,6 +18,7 @@ public:
     void ProcessBaseRequests(TransportCatalogue &db, renderer::MapRenderer& map) const;
     void ProcessStatRequests(const RequestHandler &db, std::ostream &output) const;
     void ProcessRenderSettings(renderer::Settings& settings) const;
+    RoutingSettings ReadRoutingSettings() const;
 
 private:
     void ProcessStops(const json::Array& base_requests, TransportCatalogue& db) const;

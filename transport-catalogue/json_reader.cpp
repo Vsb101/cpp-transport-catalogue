@@ -22,12 +22,15 @@ static constexpr std::string_view k_stat_requests_key = "stat_requests";
 static constexpr std::string_view k_render_settings_key = "render_settings";
 static constexpr std::string_view k_latitude_key = "latitude";
 static constexpr std::string_view k_longitude_key = "longitude";
-
+static constexpr std::string_view k_routing_settings_key = "routing_settings";
+static constexpr std::string_view k_bus_wait_time_key = "bus_wait_time";
+static constexpr std::string_view k_bus_velocity_key = "bus_velocity";
 
 // === Типы запросов ===
 static constexpr std::string_view k_stop_type = "Stop";
 static constexpr std::string_view k_bus_type = "Bus";
 static constexpr std::string_view k_map_type = "Map";
+static constexpr std::string_view k_route_type = "Route";
 
 // === Ключи рендер-настроек ===
 static constexpr std::string_view k_width_key = "width";
@@ -111,10 +114,8 @@ void JsonReader::ReadData(std::istream& input) {
     document_ = json::Load(input);
 }
 
-// Основной метод инициализации транспортного справочника и карты.
-// Последовательно обрабатывает базовые запросы: сначала остановки, затем расстояния и маршруты.
-// Обеспечивает правильный порядок загрузки данных и передаёт управление специализированным обработчикам.
-// Является центральным «проводником» на этапе построения модели.
+// Обрабатывает базовые запросы: сначала остановки, затем расстояния, потом автобусы.
+// Порядок важен: сначала должны быть добавлены остановки, чтобы для них задать расстояния.
 void JsonReader::ProcessBaseRequests(TransportCatalogue& db, renderer::MapRenderer& map) const {
     const auto& root = document_.GetRoot().AsDict();
 
@@ -313,72 +314,133 @@ void JsonReader::ProcessBuses(const json::Array& base_requests, TransportCatalog
 // Обрабатывает один статистический запрос и формирует JSON-ответ.
 // Этапы:
 // 1 Проверяет наличие и корректность полей "id" и "type".
-// 2 В зависимости от типа ("Bus", "Stop", "Map") — запрашивает данные из RequestHandler.
+// 2 В зависимости от типа ("Bus", "Stop", "Map", "Route") — запрашивает данные из RequestHandler.
 // 3 Формирует ответ с данными или сообщением об ошибке.
 // Гарантирует, что поле "request_id" присутствует всегда.
 json::Node JsonReader::ProcessOneStatRequest(const json::Dict& request, const RequestHandler& db) const {
     json::Builder builder;
     builder.StartDict();
 
+    // Извлекаем request_id
     auto id_it = request.find(k_id_key);
     if (id_it == request.end() || !id_it->second.IsInt()) {
-        builder.Key("request_id").Value(0);
-        builder.Key("error_message").Value("invalid request id");
-        return builder.EndDict().Build();
+        return builder.Key("request_id").Value(0)
+                        .Key("error_message").Value("invalid request id")
+                        .EndDict()
+                        .Build();
     }
     int id = id_it->second.AsInt();
     builder.Key("request_id").Value(id);
 
+    // Извлекаем тип запроса
     auto type_it = request.find(k_type_key);
     if (type_it == request.end() || !type_it->second.IsString()) {
-        builder.Key("error_message").Value("invalid type");
-        return builder.EndDict().Build();
+        return builder.Key("error_message").Value("invalid type")
+                        .EndDict()
+                        .Build();
     }
     std::string_view type = type_it->second.AsString();
 
+    // Обработка по типу
     if (type == k_bus_type) {
         auto name_it = request.find(k_name_key);
         if (name_it == request.end() || !name_it->second.IsString()) {
-            builder.Key("error_message").Value("invalid bus name");
-        } else {
-            std::string_view bus_name = name_it->second.AsString();
-            auto route_info = db.GetBusStat(bus_name);
-            if (route_info) {
-                auto node = AsJsonNode(*route_info);
-                for (const auto& [k, v] : node.AsDict()) {
-                    builder.Key(k).Value(v.GetValue());
-                }
-            } else {
-                builder.Key("error_message").Value("not found");
-            }
+            return builder.Key("error_message").Value("invalid bus name")
+                            .EndDict()
+                            .Build();
         }
+        std::string_view bus_name = name_it->second.AsString();
+
+        auto route_info = db.GetBusStat(bus_name);
+        if (!route_info) {
+            return builder.Key("error_message").Value("not found")
+                            .EndDict()
+                            .Build();
+        }
+
+    
+        auto node = AsJsonNode(*route_info);
+        const auto& dict = node.AsDict();
+        for (const auto& [key, value] : dict) {
+            builder.Key(key).Value(value.GetValue());
+        }
+        return builder.EndDict().Build();
+
     } else if (type == k_stop_type) {
         auto name_it = request.find(k_name_key);
         if (name_it == request.end() || !name_it->second.IsString()) {
-            builder.Key("error_message").Value("invalid stop name");
-        } else {
-            std::string_view stop_name = name_it->second.AsString();
-            if (!db.GetStop(stop_name)) {
-                builder.Key("error_message").Value("not found");
-            } else {
-                auto buses = db.GetBusesByStop(stop_name);
-                builder.Key("buses").StartArray();
-                for (const auto& bus : buses) {
-                    builder.Value(std::string(bus));
-                }
-                builder.EndArray();
-            }
+            return builder.Key("error_message").Value("invalid stop name")
+                            .EndDict()
+                            .Build();
         }
+        std::string_view stop_name = name_it->second.AsString();
+        if (!db.GetStop(stop_name)) {
+            return builder.Key("error_message").Value("not found")
+                            .EndDict()
+                            .Build();
+        }
+        auto buses = db.GetBusesByStop(stop_name);
+        builder.Key("buses").StartArray();
+        for (const auto& bus : buses) {
+            builder.Value(std::string(bus));
+        }
+        builder.EndArray();
+        return builder.EndDict().Build();
+
     } else if (type == k_map_type) {
         std::ostringstream map_ss;
         db.RenderMap().Render(map_ss);
-        builder.Key("map").Value(map_ss.str());
-    } else {
-        builder.Key("error_message").Value("unknown type");
-    }
+        return builder.Key("map").Value(map_ss.str())
+                        .EndDict()
+                        .Build();
 
-    return builder.EndDict().Build();
+    } else if (type == k_route_type) {
+        auto from_it = request.find("from");
+        auto to_it = request.find("to");
+        if (from_it == request.end() || to_it == request.end() ||
+            !from_it->second.IsString() || !to_it->second.IsString()) {
+            return builder.Key("error_message").Value("invalid route request")
+                            .EndDict()
+                            .Build();
+        }
+
+        std::string_view from = from_it->second.AsString();
+        std::string_view to = to_it->second.AsString();
+
+        auto route_data = db.BuildRoute(from, to);
+        if (!route_data) {
+            return builder.Key("error_message").Value("not found")
+                            .EndDict()
+                            .Build();
+        }
+
+        double total_time = 0.0;
+        builder.Key("items").StartArray();
+        for (const auto& item : *route_data) {
+            total_time += item.time;
+            builder.StartDict();
+            builder.Key("type").Value(item.type);
+            if (item.type == "Wait") {
+                builder.Key("stop_name").Value(item.stop_name);
+            } else if (item.type == "Bus") {
+                builder.Key("bus").Value(item.bus_name);
+                builder.Key("span_count").Value(static_cast<int>(item.span_count));
+            }
+            builder.Key("time").Value(item.time);
+            builder.EndDict();
+        }
+        builder.EndArray();
+
+        builder.Key("total_time").Value(total_time);
+        return builder.EndDict().Build();
+
+    } else {
+        return builder.Key("error_message").Value("unknown type")
+                        .EndDict()
+                        .Build();
+    }
 }
+
 
 // Печатает итоговый массив ответов в выходной поток в формате JSON.
 // Используется для отправки результата обработки stat_requests.
@@ -409,3 +471,33 @@ std::optional<std::string_view> JsonReader::GetRequestNameIfType(const json::Dic
     }
     return name_it->second.AsString();
 }
+
+// Извлекает настройки маршрутизации: время ожидания и скорость автобуса.
+// Ожидает поле "routing_settings" с двумя полями: bus_wait_time (сек/мин) и bus_velocity (км/ч).
+// Проверяет типы: bus_wait_time — число, bus_velocity — число.
+// При ошибке выбрасывает invalid_argument.
+// Возвращает объект RoutingSettings, используемый для создания TransportRouter.
+RoutingSettings JsonReader::ReadRoutingSettings() const {
+    const auto& root = document_.GetRoot().AsDict();
+
+    auto it = root.find(k_routing_settings_key);
+    if (it == root.end() || !it->second.IsDict()) {
+        throw std::invalid_argument("Routing settings not found in JSON");
+    }
+
+    const auto& settings = it->second.AsDict();
+
+    auto wait_it = settings.find(k_bus_wait_time_key);
+    auto vel_it  = settings.find(k_bus_velocity_key);
+
+    if (wait_it == settings.end() || !wait_it->second.IsInt() ||
+        vel_it == settings.end() || !vel_it->second.IsDouble()) {
+        throw std::invalid_argument("Invalid routing settings");
+    }
+
+    return RoutingSettings{
+        .bus_wait_time = wait_it->second.AsDouble(),
+        .bus_velocity = vel_it->second.AsDouble()
+    };
+}
+

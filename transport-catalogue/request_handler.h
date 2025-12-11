@@ -3,6 +3,7 @@
 #include "map_renderer.h"
 #include "svg.h"
 #include "transport_catalogue.h"
+#include "transport_router.h"
 
 #include <optional>
 
@@ -11,7 +12,9 @@
 // См. паттерн проектирования Фасад: https://ru.wikipedia.org/wiki/Фасад_(шаблон_проектирования)
 class RequestHandler {
 public:
-    RequestHandler(const TransportCatalogue& db, const renderer::MapRenderer& renderer);
+    RequestHandler(const TransportCatalogue& db,
+                   const renderer::MapRenderer& renderer,
+                   const TransportRouter& router);
 
     [[nodiscard]] std::optional<RouteInfo> GetBusStat(const std::string_view& bus_name) const;
 
@@ -21,7 +24,12 @@ public:
 
     [[nodiscard]] const Stop* GetStop(const std::string_view& stop_name) const;
 
+    [[nodiscard]] std::optional<std::vector<TransportRouter::RouteData>> BuildRoute(
+        std::string_view from, std::string_view to) const;
+
+
 private:
     const TransportCatalogue& db_;
     const renderer::MapRenderer& renderer_;
+    const TransportRouter& router_;
 };

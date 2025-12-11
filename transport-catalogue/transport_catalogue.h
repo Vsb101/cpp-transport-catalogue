@@ -10,6 +10,7 @@
 #include <unordered_set>
 #include <vector>
 #include <string>
+#include <map>
 
 #include "domain.h"
 #include "geo.h"
@@ -22,6 +23,7 @@ using std::pair;
 using std::vector;
 using std::deque;
 using std::string;
+using std::map;
 
 class TransportCatalogue {
     
@@ -37,6 +39,9 @@ public:
     const Bus* FindRoute(string_view bus_name) const;
     std::optional<RouteInfo> BusRouteInfo(string_view bus_name) const;
     SortedBuses StopInfo(string_view stop_name) const;
+    map<string_view, const Bus*> GetAllSortedBuses() const noexcept;
+    map<string_view, const Stop*> GetAllSortedStops() const noexcept;
+    size_t GetDistance(const Stop* from, const Stop* to) const;
 
 private:
     void AssociateStopWithBus(Stop *stop, const Bus *bus);
