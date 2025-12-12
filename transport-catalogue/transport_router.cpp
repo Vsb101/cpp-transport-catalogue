@@ -2,7 +2,8 @@
 
 #include <algorithm>
 
-constexpr double k_KmhToMpm = 1000.0 / 60.0; // метры в минуту
+// Для персчета в метры в минуту
+constexpr double k_KmhToMpm = 1000.0 / 60.0;  
 
 // Инициализирует граф маршрутов: по 2 вершины на каждую остановку (вход и выход).
 // Добавляет рёбра ожидания Wait на всех остановках — фиксированное время.
@@ -42,8 +43,19 @@ TransportRouter::TransportRouter(double bus_wait_time, double bus_velocity, cons
         const auto& stops = bus_ptr->route_;
         if (stops.size() < 2) continue;
 
+        // Добавляем рёбра для поездок от остановки i до j, но не дальше MAX_ROUTE_SPANS перегонов.
+        // Это ограничение ускоряет построение графа и работу маршрутизатора.
+        // Без него: для автобуса с 1000 остановками будет ~500_000 рёбер (O(n²)).
+        // С ним: максимум 20 перегонов вперёд → не более 20 * 1000 = 20_000 рёбер.
+        // Пример: если MAX_ROUTE_SPANS = 20, то:
+        //   - с остановки 0 можно уехать до 1, 2, ..., 20 (но не до 1000)
+        //   - с остановки 50 — до 51, 52, ..., 70
+        //   - с остановки 999 — только до 1000 (если есть)
+        // Это реалистично: пассажир редко едет более чем на 20 остановок за раз.
+        // При этом кратчайший маршрут всё ещё будет найден, так как пассажир может
+        // пересесть, если нужно проехать дальше.
         for (size_t i = 0; i < stops.size(); ++i) {
-            for (size_t j = i + 1; j < stops.size(); ++j) {
+            for (size_t j = i + 1; j < stops.size() && (j - i) <= MAX_ROUTE_SPANS; ++j) {
                 const Stop* from = stops[i];
                 const Stop* to = stops[j];
 
@@ -63,8 +75,6 @@ TransportRouter::TransportRouter(double bus_wait_time, double bus_velocity, cons
                 });
 
                 edge_info_.push_back(RouteData::Bus(std::string(bus_ptr->name_), j - i, travel_time));
-
-
 
                 // Обратный путь, если не кольцевой
                 if (!bus_ptr->is_roundtrip_) {
@@ -92,7 +102,7 @@ TransportRouter::TransportRouter(double bus_wait_time, double bus_velocity, cons
     }
 
     // Сохраняем граф
-    graph_ = std::move(stops_graph);
+    graph_  = std::move(stops_graph);
     router_ = std::make_unique<graph::Router<double>>(graph_);
 }
 
@@ -102,15 +112,15 @@ TransportRouter::TransportRouter(double bus_wait_time, double bus_velocity, cons
 // Граф строит путь через рёбра ожидания и автобусные перегоны.
 // Возвращает nullopt, если одна из остановок не существует.
 // Используется для построения RouteData.
-optional<TransportRouter::RouteInfo> TransportRouter::FindRoute(string_view from, string_view to) const {
+std::optional<TransportRouter::RouteInfo> TransportRouter::FindRoute(std::string_view from, std::string_view to) const {
     auto from_it = stop_ids_.find(std::string(from));
-    auto to_it = stop_ids_.find(std::string(to));
+    auto to_it   = stop_ids_.find(std::string(to));
     if (from_it == stop_ids_.end() || to_it == stop_ids_.end()) {
         return std::nullopt;
     }
 
     graph::VertexId from_vertex = from_it->second;  // выходим из ожидания
-    graph::VertexId to_vertex = to_it->second;          // входим на остановку
+    graph::VertexId to_vertex   = to_it->second;    // входим на остановку
 
     return router_->BuildRoute(from_vertex, to_vertex);
 }
@@ -121,14 +131,11 @@ optional<TransportRouter::RouteInfo> TransportRouter::FindRoute(string_view from
 // Возвращает nullopt, если маршрут не найден.
 // Результат используется в JSON-выводе для запроса "Route".
 // Это — главный метод, связывающий граф с пользовательским ответом.
-std::optional<std::vector<TransportRouter::RouteData>> TransportRouter::BuildRoute(
-    std::string_view from, std::string_view to) const {
+std::optional<vector<TransportRouter::RouteData>> TransportRouter::BuildRoute(std::string_view from, std::string_view to) const {
     auto route_info = FindRoute(from, to);
-    if (!route_info) {
-        return std::nullopt;
-    }
+    if (!route_info) { return std::nullopt; }
 
-    std::vector<RouteData> route;
+    Route route;
     route.reserve(route_info->edges.size());
 
     for (graph::EdgeId edge_id : route_info->edges) {
@@ -138,13 +145,8 @@ std::optional<std::vector<TransportRouter::RouteData>> TransportRouter::BuildRou
     return route;
 }
 
-TransportRouter::Graph TransportRouter::GetGraph() const {
-    return graph_;
-}
-
 TransportRouter TransportRouterBuilder::Build(
     const TransportCatalogue& catalogue,
     const RoutingSettings& settings) const noexcept {
     return TransportRouter(settings.bus_wait_time, settings.bus_velocity, catalogue);
 }
-

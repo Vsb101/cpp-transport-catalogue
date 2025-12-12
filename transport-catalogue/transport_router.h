@@ -1,18 +1,18 @@
 #pragma once
 
 #include <memory>
-#include <map>
+#include <unordered_map>
+#include <string>
+#include <vector>
+#include <optional>
+#include <memory>
+#include <string_view>
 
 #include "graph.h"
 #include "router.h"
 #include "transport_catalogue.h"
 
-using std::string_view;
-using std::optional;
-using std::string;
-using std::unique_ptr;
-using std::map;
-
+// Настройки маршрута
 struct RoutingSettings {
     double bus_wait_time{};     // минуты
     double bus_velocity{};     // км/ч
@@ -20,13 +20,16 @@ struct RoutingSettings {
 
 class TransportRouter {
 public:
+    
+    // Описание одного шага в маршруте: например, "ждать 6 мин" или "ехать на автобусе 297, 2 остановки"
     struct RouteData {
-        string type;
-        string stop_name;
-        string bus_name;
-        size_t span_count = 0;
-        double time = 0.0;
+        std::string type;           // Тип действия: "Wait" или "Bus"
+        std::string stop_name;      // Название остановки, если type == "Wait"
+        std::string bus_name;       // Название автобуса, если type == "Bus"
+        size_t span_count = 0;      // Количество остановок между началом и концом маршрута (для шага/перегона)
+        double time = 0.0;          // Время, которое нужно провести на этом шаге
 
+        // Создаёт "ожидание автобуса" на указанной остановке
         static RouteData Wait(std::string stop_name, double time) {
             return RouteData{
                 .type = "Wait",
@@ -37,6 +40,7 @@ public:
             };
         }
 
+        // Создаёт "поездку на автобусе" через указанное число перегонов
         static RouteData Bus(std::string bus_name, size_t span_count, double time) {
             return RouteData{
                 .type = "Bus",
@@ -48,28 +52,30 @@ public:
         }
     };
 
-
     using Route = std::vector<RouteData>;
     using RouteInfo = graph::Router<double>::RouteInfo;
     using Graph = graph::DirectedWeightedGraph<double>;
 
     explicit TransportRouter(double bus_wait_time, double bus_velocity, const TransportCatalogue& catalogue);
-
-    optional<RouteInfo> FindRoute(string_view stop_from, string_view stop_to) const;
-    optional<std::vector<RouteData>> BuildRoute(string_view from, string_view to) const;
-    
-    Graph GetGraph() const;
+ 
+    std::optional<std::vector<RouteData>> BuildRoute(std::string_view from, std::string_view to) const;
 
 private:
+    std::optional<RouteInfo> FindRoute(std::string_view stop_from, std::string_view stop_to) const;
+    
     double bus_wait_time_{0.0};
     double bus_velocity_ {0.0};
 
-    graph::DirectedWeightedGraph<double> graph_;
+    // Максимальное число перегонов в маршруте
+    // Ограничение на количество поездоек.
+    static constexpr size_t MAX_ROUTE_SPANS{90}; 
+
+    Graph graph_;
     std::unique_ptr<graph::Router<double>> router_;
 
-    std::map<std::string, graph::VertexId> stop_ids_;
-    std::vector<std::string> vertex_to_stop_name_;
-    std::vector<RouteData> edge_info_; 
+    std::unordered_map<string, graph::VertexId> stop_ids_;
+    vector<string> vertex_to_stop_name_;
+    Route edge_info_; 
 };
 
 class TransportRouterBuilder {
